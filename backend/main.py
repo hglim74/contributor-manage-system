@@ -67,6 +67,8 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+from fastapi.staticfiles import StaticFiles
+
 # 5. FastAPI 앱 초기화 및 미들웨어
 app = FastAPI(title="Donor Display Management System")
 
@@ -76,6 +78,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 정적 파일 서빙 (Admin 페이지)
+app.mount("/static", StaticFiles(directory="static", html=True), name="static")
 
 # DB 세션 의존성
 def get_db():
@@ -119,6 +124,33 @@ async def create_donor(donor: DonorCreate, db: Session = Depends(get_db)):
     }
     await manager.broadcast(payload)
     return {"status": "success", "id": db_donor.id}
+
+@app.put("/api/v1/donors/{donor_id}")
+async def update_donor(donor_id: int, donor: DonorCreate, db: Session = Depends(get_db)):
+    """기부자 정보 수정 API"""
+    db_donor = db.query(DonorRecord).filter(DonorRecord.id == donor_id).first()
+    if not db_donor:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    
+    db_donor.name = donor.name
+    db_donor.amount = donor.amount
+    db_donor.grade = donor.grade
+    db_donor.message = donor.message
+    
+    db.commit()
+    db.refresh(db_donor)
+    return {"status": "success", "id": db_donor.id}
+
+@app.delete("/api/v1/donors/{donor_id}")
+async def delete_donor(donor_id: int, db: Session = Depends(get_db)):
+    """기부자 삭제 API"""
+    db_donor = db.query(DonorRecord).filter(DonorRecord.id == donor_id).first()
+    if not db_donor:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    
+    db.delete(db_donor)
+    db.commit()
+    return {"status": "success", "id": donor_id}
 
 @app.post("/api/v1/donors/bulk")
 async def bulk_upload_donors(file: UploadFile = File(...), db: Session = Depends(get_db)):
